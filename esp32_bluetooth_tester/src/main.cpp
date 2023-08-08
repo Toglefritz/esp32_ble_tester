@@ -1,3 +1,24 @@
+/**
+ * @file
+ * @brief Firmware for the ESP32 running on the Bee S3 development board.
+ *
+ * This firmware acts as a simple tool for testing external systems that
+ * utilize Bluetooth Low Energy (BLE) communication to control IoT devices.
+ * It provides two main functionalities:
+ *   1. Automatically advertise the BLE capabilities of the ESP32 and manage
+ *      connections and disconnections of BLE clients.
+ *   2. Control the Neopixel LED onboard the BeeS3 dev board through BLE.
+ *      It has two characteristics:
+ *        - An open characteristic to turn the LED on to a green color.
+ *        - An encrypted characteristic to turn the LED on to a red color.
+ *
+ * The BEES3 library is used to control the Neopixel LED, and the ESP32 BLE
+ * Arduino library is used for BLE communication.
+ *
+ * This implementation is designed to be a practical testing tool to validate
+ * and debug Bluetooth communication between a mobile application and IoT devices.
+ */
+
 #include <Arduino.h>
 #include <BLEDevice.h>
 #include <BLEServer.h>
