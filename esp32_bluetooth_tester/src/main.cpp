@@ -150,7 +150,13 @@ void setup() {
         BLECharacteristic::PROPERTY_READ |
         BLECharacteristic::PROPERTY_WRITE
     );
-    pEncryptedCharacteristic->setAccessPermissions(ESP_GATT_PERM_READ_ENCRYPTED | ESP_GATT_PERM_WRITE_ENCRYPTED);
+
+    // Set up security on the encrypted characteristic to utilize Just Works pairing
+    pEncryptedCharacteristic->setAccessPermissions(ESP_GATT_PERM_WRITE_ENCRYPTED);
+    BLESecurity *pSecurity = new BLESecurity();
+    pSecurity->setCapability(ESP_IO_CAP_NONE);
+    pSecurity->setAuthenticationMode(ESP_LE_AUTH_REQ_SC_ONLY);
+
     pEncryptedCharacteristic->setCallbacks(new Callbacks());
     pEncryptedCharacteristic->addDescriptor(new BLE2902());
 
