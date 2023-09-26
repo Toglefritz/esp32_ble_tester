@@ -38,6 +38,8 @@
 // On the Adafruit QT Py ESP32 C3, the Neopixel LED is connected to GPIO2
 #define LED 2
 
+// TODO add more common ESP32 dev boards
+
 // Initalize the Neopixel library used to control the LED.
 Adafruit_NeoPixel led = Adafruit_NeoPixel(1, LED, NEO_GRB + NEO_KHZ800);
 
@@ -63,10 +65,24 @@ class ServerCallbacks : public BLEServerCallbacks {
     void onConnect(BLEServer* pServer) {
         Serial.println("Device connected");
     }
+
     void onDisconnect(BLEServer* pServer) {
         Serial.println("Device disconnected");
     }
 };
+
+/**
+ * @brief Sets the value of a BLE characteristic to a specified string value.
+ * 
+ * @param pCharacteristic A pointer to the BLECharacteristic object to be updated.
+ * @param value The string value to set for the characteristic.
+ */
+void setCharacteristicValue(BLECharacteristic* pCharacteristic, const std::string& value) {
+    if (pCharacteristic != nullptr) { // Ensure the characteristic pointer is valid.
+        pCharacteristic->setValue(value); // Set the value.
+        pCharacteristic->notify(); // Notify connected clients about the change.
+    }
+}
 
 /**
  * @class Callbacks
@@ -93,22 +109,54 @@ class Callbacks : public BLECharacteristicCallbacks {
             if (pCharacteristic->getUUID().equals(BLEUUID("abcd1234-1234-1234-1234-1234567890ab"))) {
                 led.setPixelColor(0, led.Color(0, 255, 0)); // Green LED
                 led.show(); 
-                Serial.println("Green LED ON");
+                Serial.println("Green LED on");
+                setCharacteristicValue(pCharacteristic, "Green LED on");
             }
             else if (pCharacteristic->getUUID().equals(BLEUUID("abcd1234-1234-1234-1234-1234567890ac"))) {
                 led.setPixelColor(0, led.Color(255, 0, 0)); // Red LED
                 led.show(); 
-                Serial.println("Red LED ON");
+                Serial.println("Red LED on");
+                setCharacteristicValue(pCharacteristic, "Red LED on");
             }
         }
         else if (value == "OFF") {
             led.setPixelColor(0, led.Color(0, 0, 0)); // Off
             led.show(); 
-            Serial.println("LED OFF");
+            Serial.println("LED off");
+            setCharacteristicValue(pCharacteristic, "LED off");
         } 
         else {
           Serial.print("Received unexpected value: ");
           Serial.println(value.c_str());
+        }
+    }
+};
+
+/**
+ * @class DescriptorCallbacks
+ * @brief A class to handle BLE descriptor read and write events.
+ *
+ * This class extends the BLEDescriptorCallbacks class and overrides its onWrite method
+ * to provide custom behavior for enabling or disabling notifications on the BLE characteristics.
+ *
+ * @method onWrite
+ * This method is called when a write request is received for the BLE2902 descriptor,
+ * which is the standard descriptor for enabling or disabling notifications.
+ * It handles the following cases:
+ *   - When a value of 0x01 is written to the descriptor, it means the client has enabled notifications.
+ *     The method will print "Notifications enabled" to the serial console.
+ *   - When a value of 0x00 is written to the descriptor, it means the client has disabled notifications.
+ *     The method will print "Notifications disabled" to the serial console.
+ *
+ * The method checks the written value to determine if notifications have been enabled or disabled.
+ */
+class DescriptorCallbacks : public BLEDescriptorCallbacks {
+    void onWrite(BLEDescriptor* pDescriptor) {
+        uint8_t* data = pDescriptor->getValue();
+        if (data[0] == 0x01) { // Client has enabled notifications
+            Serial.println("Notifications enabled");
+        } else if (data[0] == 0x00) { // Client has disabled notifications
+            Serial.println("Notifications disabled");
         }
     }
 };
@@ -135,20 +183,26 @@ void setup() {
     // Create the BLE Service
     BLEService *pService = pServer->createService("abcd1234-1234-1234-1234-1234567890aa");
 
-    // Create the open BLE Characteristic
+    // Create the open BLE characteristic
     BLECharacteristic *pOpenCharacteristic = pService->createCharacteristic(
         "abcd1234-1234-1234-1234-1234567890ab",
         BLECharacteristic::PROPERTY_READ |
-        BLECharacteristic::PROPERTY_WRITE
+        BLECharacteristic::PROPERTY_WRITE |
+        BLECharacteristic::PROPERTY_NOTIFY
     );
+
+    // Set callbacks on the open BLE characteristic
     pOpenCharacteristic->setCallbacks(new Callbacks());
-    pOpenCharacteristic->addDescriptor(new BLE2902());
+    BLEDescriptor* pOpenNotificationDescriptor = new BLE2902();
+    pOpenNotificationDescriptor->setCallbacks(new DescriptorCallbacks());
+    pOpenCharacteristic->addDescriptor(pOpenNotificationDescriptor);
 
     // Create the encrypted BLE Characteristic
     BLECharacteristic *pEncryptedCharacteristic = pService->createCharacteristic(
         "abcd1234-1234-1234-1234-1234567890ac",
         BLECharacteristic::PROPERTY_READ |
-        BLECharacteristic::PROPERTY_WRITE
+        BLECharacteristic::PROPERTY_WRITE |
+        BLECharacteristic::PROPERTY_NOTIFY
     );
 
     // Set up security on the encrypted characteristic to utilize Just Works pairing
@@ -157,8 +211,11 @@ void setup() {
     pSecurity->setCapability(ESP_IO_CAP_NONE);
     pSecurity->setAuthenticationMode(ESP_LE_AUTH_REQ_SC_ONLY);
 
+    // Set callbacks on the encrypted characteristic
     pEncryptedCharacteristic->setCallbacks(new Callbacks());
-    pEncryptedCharacteristic->addDescriptor(new BLE2902());
+    BLEDescriptor* pEncryptedNotificationDescriptor = new BLE2902();
+    pEncryptedNotificationDescriptor->setCallbacks(new DescriptorCallbacks());
+    pEncryptedCharacteristic->addDescriptor(pEncryptedNotificationDescriptor);
 
     // Start the service
     pService->start();
