@@ -176,6 +176,11 @@ void setup() {
     // Create the BLE Device
     BLEDevice::init("ESP32_BLE_TESTER");
 
+    // Configure BLE Security settings
+    BLESecurity *pSecurity = new BLESecurity();
+    pSecurity->setCapability(ESP_IO_CAP_NONE);
+    pSecurity->setAuthenticationMode(ESP_LE_AUTH_REQ_SC_ONLY);
+
     // Create the BLE Server
     BLEServer *pServer = BLEDevice::createServer();
     pServer->setCallbacks(new ServerCallbacks());
@@ -191,6 +196,9 @@ void setup() {
         BLECharacteristic::PROPERTY_NOTIFY
     );
 
+    // Set initial value for the open BLE characteristic
+    pOpenCharacteristic->setValue("LED off");
+
     // Set callbacks on the open BLE characteristic
     pOpenCharacteristic->setCallbacks(new Callbacks());
     BLEDescriptor* pOpenNotificationDescriptor = new BLE2902();
@@ -205,11 +213,11 @@ void setup() {
         BLECharacteristic::PROPERTY_NOTIFY
     );
 
+    // Set initial value for the encrypted BLE characteristic
+    pEncryptedCharacteristic->setValue("LED off");
+
     // Set up security on the encrypted characteristic to utilize Just Works pairing
-    pEncryptedCharacteristic->setAccessPermissions(ESP_GATT_PERM_WRITE_ENCRYPTED);
-    BLESecurity *pSecurity = new BLESecurity();
-    pSecurity->setCapability(ESP_IO_CAP_NONE);
-    pSecurity->setAuthenticationMode(ESP_LE_AUTH_REQ_SC_ONLY);
+    pEncryptedCharacteristic->setAccessPermissions(ESP_GATT_PERM_READ_ENCRYPTED | ESP_GATT_PERM_WRITE_ENCRYPTED);
 
     // Set callbacks on the encrypted characteristic
     pEncryptedCharacteristic->setCallbacks(new Callbacks());
