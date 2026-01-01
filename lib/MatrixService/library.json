@@ -1,0 +1,20 @@
+{
+    "name": "MatrixService",
+    "version": "1.0.0",
+    "description": "LED matrix control service for M5 Stack ATOM Matrix",
+    "keywords": ["led", "matrix", "m5stack", "atom", "ble"],
+    "authors": [
+        {
+            "name": "ESP32 BLE Tester",
+            "maintainer": true
+        }
+    ],
+    "license": "MIT",
+    "homepage": "https://github.com/Toglefritz/esp32_ble_tester",
+    "dependencies": {
+        "m5stack/M5Atom": "^0.1.0",
+        "fastled/FastLED": "^3.6.0"
+    },
+    "frameworks": ["arduino"],
+    "platforms": ["espressif32"]
+}

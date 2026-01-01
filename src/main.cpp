@@ -23,9 +23,7 @@
 #include <BLEServer.h>
 #include <BLEUtils.h>
 #include <BLE2902.h>
-
-/// Number of LEDs in the ATOM Matrix (5x5 grid)
-const uint8_t LED_COUNT = 25;
+#include <matrix_service.h>
 
 /// Serial baud rate for debugging output
 const uint32_t SERIAL_BAUD_RATE = 115200;
@@ -38,6 +36,9 @@ BLEServer* bleServer = nullptr;
 
 /// Connection status tracking
 bool deviceConnected = false;
+
+/// Matrix service instance
+MatrixService matrixService;
 
 /**
  * BLE Server Callbacks
@@ -59,27 +60,22 @@ class ServerCallbacks: public BLEServerCallbacks {
 };
 
 /**
- * Sets all LEDs to a solid color.
+ * Updates matrix status based on BLE connection state.
  * 
- * @param color RGB color value for all LEDs
- */
-void setAllLEDs(CRGB color) {
-    for (uint8_t i = 0; i < LED_COUNT; i++) {
-        M5.dis.drawpix(i, color);
-    }
-}
-
-/**
- * Updates LED status based on BLE connection state.
- * 
- * Blue: Advertising (ready for connections)
- * Green: Connected to a client
+ * Connected: Solid green
+ * Advertising: Start pulsing blue animation (fire and forget)
  */
 void updateLEDStatus() {
-    if (deviceConnected) {
-        setAllLEDs(CRGB::Green);
-    } else {
-        setAllLEDs(CRGB::Blue);
+    static bool lastConnectionState = false;
+    
+    // Only update LED state when connection status changes
+    if (deviceConnected != lastConnectionState) {
+        if (deviceConnected) {
+            matrixService.setSolidColor(CRGB::Green);
+        } else {
+            matrixService.startPulsingBlue();
+        }
+        lastConnectionState = deviceConnected;
     }
 }
 
@@ -130,16 +126,15 @@ void setup() {
   Serial.println("Status: Initializing...");
   Serial.println();
   
-  // Initialize LED matrix
-  M5.dis.clear();
-  M5.dis.setBrightness(50);
-  Serial.println("LED matrix initialized");
+  // Initialize matrix service
+  matrixService.begin();
+  Serial.println("Matrix service initialized");
   
   // Initialize BLE
   initializeBLE();
   
-  // Set initial LED status (advertising = blue)
-  updateLEDStatus();
+  // Set initial LED status (advertising = pulsing blue)
+  matrixService.startPulsingBlue();
   
   Serial.println("Device ready for BLE connections");
 }
@@ -157,12 +152,6 @@ void loop() {
   // Update LED status based on connection state
   updateLEDStatus();
   
-  // Handle button press for debugging
-  if (M5.Btn.wasPressed()) {
-    Serial.print("Button pressed - Connection status: ");
-    Serial.println(deviceConnected ? "Connected" : "Advertising");
-  }
-  
   // Small delay to prevent excessive CPU usage
-  delay(100);
+  delay(200);
 }
