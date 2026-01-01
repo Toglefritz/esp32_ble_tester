@@ -38,6 +38,7 @@ const char* TEST_SERVICE_UUID = "10000000-1234-1234-1234-123456789abc";
 const char* READ_WRITE_CHAR_UUID = "10000001-1234-1234-1234-123456789abc";
 const char* READ_ONLY_CHAR_UUID = "10000002-1234-1234-1234-123456789abc";
 const char* WRITE_ONLY_CHAR_UUID = "10000003-1234-1234-1234-123456789abc";
+const char* NOTIFY_CHAR_UUID = "10000004-1234-1234-1234-123456789abc";
 
 /// BLE server instance
 BLEServer* bleServer = nullptr;
@@ -49,9 +50,15 @@ BLEService* testService = nullptr;
 BLECharacteristic* readWriteCharacteristic = nullptr;
 BLECharacteristic* readOnlyCharacteristic = nullptr;
 BLECharacteristic* writeOnlyCharacteristic = nullptr;
+BLECharacteristic* notifyCharacteristic = nullptr;
 
 /// Connection status tracking
 bool deviceConnected = false;
+
+/// Notification timing
+unsigned long lastNotifyTime = 0;
+const unsigned long NOTIFY_INTERVAL_MS = 3000; // Send notification every 3 seconds
+uint32_t notifyCounter = 0;
 
 /// Matrix service instance
 MatrixService matrixService;
@@ -119,6 +126,25 @@ void updateLEDStatus() {
 }
 
 /**
+ * Sends periodic notifications to subscribed clients.
+ * 
+ * Sends a counter value every 3 seconds to test notification functionality.
+ */
+void handleNotifications() {
+    if (deviceConnected && (millis() - lastNotifyTime >= NOTIFY_INTERVAL_MS)) {
+        String notifyValue = "Counter: " + String(notifyCounter);
+        notifyCharacteristic->setValue(notifyValue.c_str());
+        notifyCharacteristic->notify();
+        
+        Serial.print("Notification sent: ");
+        Serial.println(notifyValue);
+        
+        notifyCounter++;
+        lastNotifyTime = millis();
+    }
+}
+
+/**
  * Initializes BLE functionality.
  * 
  * Sets up BLE device, server, creates test service with one characteristic,
@@ -158,6 +184,13 @@ void initializeBLE() {
     );
     writeOnlyCharacteristic->setCallbacks(new WriteOnlyCallbacks());
     
+    // 4. Notify characteristic (periodic updates)
+    notifyCharacteristic = testService->createCharacteristic(
+        NOTIFY_CHAR_UUID,
+        BLECharacteristic::PROPERTY_NOTIFY
+    );
+    notifyCharacteristic->addDescriptor(new BLE2902());
+    
     // Start the service
     testService->start();
     
@@ -180,6 +213,8 @@ void initializeBLE() {
     Serial.println(READ_ONLY_CHAR_UUID);
     Serial.print("  Write-only: ");
     Serial.println(WRITE_ONLY_CHAR_UUID);
+    Serial.print("  Notify: ");
+    Serial.println(NOTIFY_CHAR_UUID);
 }
 
 /**
@@ -230,6 +265,9 @@ void loop() {
   
   // Update LED status based on connection state
   updateLEDStatus();
+  
+  // Handle notifications
+  handleNotifications();
   
   // Small delay to prevent excessive CPU usage
   delay(10);
