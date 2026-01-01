@@ -34,8 +34,9 @@ const char* BLE_DEVICE_NAME = "SplendidBLE-Tester";
 /// Test service UUID
 const char* TEST_SERVICE_UUID = "10000000-1234-1234-1234-123456789abc";
 
-/// Test characteristic UUID
-const char* TEST_CHARACTERISTIC_UUID = "00000001-4321-4321-4321-cba987654321";
+/// Test characteristic UUIDs
+const char* READ_WRITE_CHAR_UUID = "10000001-1234-1234-1234-123456789abc";
+const char* READ_ONLY_CHAR_UUID = "10000002-1234-1234-1234-123456789abc";
 
 /// BLE server instance
 BLEServer* bleServer = nullptr;
@@ -43,8 +44,9 @@ BLEServer* bleServer = nullptr;
 /// Test service instance
 BLEService* testService = nullptr;
 
-/// Test characteristic instance
-BLECharacteristic* testCharacteristic = nullptr;
+/// Test characteristics
+BLECharacteristic* readWriteCharacteristic = nullptr;
+BLECharacteristic* readOnlyCharacteristic = nullptr;
 
 /// Connection status tracking
 bool deviceConnected = false;
@@ -110,14 +112,19 @@ void initializeBLE() {
     // Create test service
     testService = bleServer->createService(TEST_SERVICE_UUID);
     
-    // Create test characteristic with read and write properties
-    testCharacteristic = testService->createCharacteristic(
-        TEST_CHARACTERISTIC_UUID,
+    // 1. Read/Write characteristic (original)
+    readWriteCharacteristic = testService->createCharacteristic(
+        READ_WRITE_CHAR_UUID,
         BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE
     );
+    readWriteCharacteristic->setValue("Hello BLE");
     
-    // Set initial value for the characteristic
-    testCharacteristic->setValue("Hello BLE");
+    // 2. Read-only characteristic (device info)
+    readOnlyCharacteristic = testService->createCharacteristic(
+        READ_ONLY_CHAR_UUID,
+        BLECharacteristic::PROPERTY_READ
+    );
+    readOnlyCharacteristic->setValue("ESP32-BLE-Tester v1.0");
     
     // Start the service
     testService->start();
