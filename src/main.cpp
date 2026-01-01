@@ -31,8 +31,20 @@ const uint32_t SERIAL_BAUD_RATE = 115200;
 /// BLE device name for advertising
 const char* BLE_DEVICE_NAME = "SplendidBLE-Tester";
 
+/// Test service UUID
+const char* TEST_SERVICE_UUID = "10000000-1234-1234-1234-123456789abc";
+
+/// Test characteristic UUID
+const char* TEST_CHARACTERISTIC_UUID = "87654321-4321-4321-4321-cba987654321";
+
 /// BLE server instance
 BLEServer* bleServer = nullptr;
+
+/// Test service instance
+BLEService* testService = nullptr;
+
+/// Test characteristic instance
+BLECharacteristic* testCharacteristic = nullptr;
 
 /// Connection status tracking
 bool deviceConnected = false;
@@ -82,7 +94,8 @@ void updateLEDStatus() {
 /**
  * Initializes BLE functionality.
  * 
- * Sets up BLE device, server, and starts advertising.
+ * Sets up BLE device, server, creates test service with one characteristic,
+ * and starts advertising.
  */
 void initializeBLE() {
     Serial.println("Initializing BLE...");
@@ -94,9 +107,24 @@ void initializeBLE() {
     bleServer = BLEDevice::createServer();
     bleServer->setCallbacks(new ServerCallbacks());
     
+    // Create test service
+    testService = bleServer->createService(TEST_SERVICE_UUID);
+    
+    // Create test characteristic with read and write properties
+    testCharacteristic = testService->createCharacteristic(
+        TEST_CHARACTERISTIC_UUID,
+        BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE
+    );
+    
+    // Set initial value for the characteristic
+    testCharacteristic->setValue("Hello BLE");
+    
+    // Start the service
+    testService->start();
+    
     // Start advertising
     BLEAdvertising* advertising = BLEDevice::getAdvertising();
-    advertising->addServiceUUID("12345678-1234-1234-1234-123456789abc");
+    advertising->addServiceUUID(TEST_SERVICE_UUID);
     advertising->setScanResponse(false);
     advertising->setMinPreferred(0x0);
     BLEDevice::startAdvertising();
@@ -104,6 +132,10 @@ void initializeBLE() {
     Serial.println("BLE advertising started");
     Serial.print("Device name: ");
     Serial.println(BLE_DEVICE_NAME);
+    Serial.print("Test service UUID: ");
+    Serial.println(TEST_SERVICE_UUID);
+    Serial.print("Test characteristic UUID: ");
+    Serial.println(TEST_CHARACTERISTIC_UUID);
 }
 
 /**
