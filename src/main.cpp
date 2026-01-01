@@ -37,6 +37,7 @@ const char* TEST_SERVICE_UUID = "10000000-1234-1234-1234-123456789abc";
 /// Test characteristic UUIDs
 const char* READ_WRITE_CHAR_UUID = "10000001-1234-1234-1234-123456789abc";
 const char* READ_ONLY_CHAR_UUID = "10000002-1234-1234-1234-123456789abc";
+const char* WRITE_ONLY_CHAR_UUID = "10000003-1234-1234-1234-123456789abc";
 
 /// BLE server instance
 BLEServer* bleServer = nullptr;
@@ -47,6 +48,7 @@ BLEService* testService = nullptr;
 /// Test characteristics
 BLECharacteristic* readWriteCharacteristic = nullptr;
 BLECharacteristic* readOnlyCharacteristic = nullptr;
+BLECharacteristic* writeOnlyCharacteristic = nullptr;
 
 /// Connection status tracking
 bool deviceConnected = false;
@@ -70,6 +72,29 @@ class ServerCallbacks: public BLEServerCallbacks {
         deviceConnected = false;
         Serial.println("BLE Client disconnected - restarting advertising");
         BLEDevice::startAdvertising();
+    }
+};
+
+/**
+ * Write-Only Characteristic Callbacks
+ * 
+ * Handles write operations to the write-only characteristic.
+ * Processes commands and provides serial feedback.
+ */
+class WriteOnlyCallbacks: public BLECharacteristicCallbacks {
+    void onWrite(BLECharacteristic* characteristic) {
+        std::string value = characteristic->getValue();
+        Serial.print("Write-only command received: ");
+        Serial.println(value.c_str());
+        
+        // Process simple commands
+        if (value == "ping") {
+            Serial.println("Command processed: pong");
+        } else if (value == "status") {
+            Serial.println("Command processed: Device is running");
+        } else {
+            Serial.println("Command processed: Unknown command");
+        }
     }
 };
 
@@ -126,6 +151,13 @@ void initializeBLE() {
     );
     readOnlyCharacteristic->setValue("ESP32-BLE-Tester v1.0");
     
+    // 3. Write-only characteristic (commands)
+    writeOnlyCharacteristic = testService->createCharacteristic(
+        WRITE_ONLY_CHAR_UUID,
+        BLECharacteristic::PROPERTY_WRITE
+    );
+    writeOnlyCharacteristic->setCallbacks(new WriteOnlyCallbacks());
+    
     // Start the service
     testService->start();
     
@@ -139,6 +171,15 @@ void initializeBLE() {
     Serial.println("BLE advertising started");
     Serial.print("Device name: ");
     Serial.println(BLE_DEVICE_NAME);
+    Serial.print("Test service UUID: ");
+    Serial.println(TEST_SERVICE_UUID);
+    Serial.println("Characteristics:");
+    Serial.print("  Read/Write: ");
+    Serial.println(READ_WRITE_CHAR_UUID);
+    Serial.print("  Read-only: ");
+    Serial.println(READ_ONLY_CHAR_UUID);
+    Serial.print("  Write-only: ");
+    Serial.println(WRITE_ONLY_CHAR_UUID);
 }
 
 /**
