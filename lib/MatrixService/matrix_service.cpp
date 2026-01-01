@@ -2,37 +2,23 @@
  * Matrix Service Implementation
  * 
  * Provides LED matrix control functionality for the ESP32 BLE tester.
- * Handles solid colors and timer-based animated effects for status indication.
+ * Handles solid colors and time-based animated effects for status indication.
  */
 
 #include "matrix_service.h"
 
-// Static member definitions
-uint8_t MatrixService::pulsePhase = 0;
-bool MatrixService::isPulsing = false;
-hw_timer_t* MatrixService::animationTimer = nullptr;
-MatrixService* MatrixService::instance = nullptr;
-
 void MatrixService::begin() {
-    // Set static instance pointer for timer callback access
-    instance = this;
-    
     // Clear LED matrix and set moderate brightness
     M5.dis.clear();
     M5.dis.setBrightness(50);
     
-    // Initialize hardware timer for smooth animations
-    animationTimer = timerBegin(0, 80, true); // Timer 0, prescaler 80 (1MHz), count up
-    timerAttachInterrupt(animationTimer, &onTimer, true); // Attach interrupt, edge type
-    timerAlarmWrite(animationTimer, TIMER_INTERVAL_US, true); // Set interval, auto-reload
+    // Initialize timing
+    lastUpdateTime = millis();
 }
 
 void MatrixService::setSolidColor(CRGB color) {
     // Stop any running animation
-    if (isPulsing) {
-        isPulsing = false;
-        timerAlarmDisable(animationTimer);
-    }
+    isPulsing = false;
     
     // Set all LEDs to the specified color
     for (uint8_t i = 0; i < LED_COUNT; i++) {
@@ -44,15 +30,20 @@ void MatrixService::startPulsingBlue() {
     // Reset animation state
     pulsePhase = 0;
     isPulsing = true;
-    
-    // Start the timer for smooth animation
-    timerAlarmEnable(animationTimer);
+    lastUpdateTime = millis();
 }
 
-void IRAM_ATTR MatrixService::onTimer() {
-    // Call the instance method to update animation
-    if (instance && isPulsing) {
-        instance->updatePulsingAnimation();
+void MatrixService::update() {
+    // Only update if pulsing animation is active
+    if (!isPulsing) {
+        return;
+    }
+    
+    // Check if it's time to update the animation
+    unsigned long currentTime = millis();
+    if (currentTime - lastUpdateTime >= UPDATE_INTERVAL_MS) {
+        updatePulsingAnimation();
+        lastUpdateTime = currentTime;
     }
 }
 

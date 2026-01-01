@@ -35,7 +35,7 @@ const char* BLE_DEVICE_NAME = "SplendidBLE-Tester";
 const char* TEST_SERVICE_UUID = "10000000-1234-1234-1234-123456789abc";
 
 /// Test characteristic UUID
-const char* TEST_CHARACTERISTIC_UUID = "87654321-4321-4321-4321-cba987654321";
+const char* TEST_CHARACTERISTIC_UUID = "00000001-4321-4321-4321-cba987654321";
 
 /// BLE server instance
 BLEServer* bleServer = nullptr;
@@ -132,10 +132,6 @@ void initializeBLE() {
     Serial.println("BLE advertising started");
     Serial.print("Device name: ");
     Serial.println(BLE_DEVICE_NAME);
-    Serial.print("Test service UUID: ");
-    Serial.println(TEST_SERVICE_UUID);
-    Serial.print("Test characteristic UUID: ");
-    Serial.println(TEST_CHARACTERISTIC_UUID);
 }
 
 /**
@@ -181,9 +177,12 @@ void loop() {
   // Update hardware state
   M5.update();
   
+  // Update matrix animations
+  matrixService.update();
+  
   // Update LED status based on connection state
   updateLEDStatus();
   
   // Small delay to prevent excessive CPU usage
-  delay(200);
+  delay(10);
 }

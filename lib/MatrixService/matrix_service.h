@@ -38,46 +38,42 @@ public:
     /**
      * Starts the pulsing blue animation for advertising mode.
      * 
-     * Creates a smooth breathing effect with blue color using a hardware timer.
-     * This is a "fire and forget" method - the animation continues automatically
-     * until setSolidColor() is called or another animation is started.
+     * Creates a smooth breathing effect with blue color.
+     * Call update() regularly in the main loop to maintain animation.
      */
     void startPulsingBlue();
 
     /**
-     * Timer callback function for smooth pulsing animation.
+     * Updates the animation state.
      * 
-     * This function is called by the hardware timer at regular intervals
-     * to update the LED brightness for smooth animation.
+     * Call this regularly in the main loop to update any active animations.
+     * Uses millis() for smooth timing without interrupts.
      */
-    static void IRAM_ATTR onTimer();
+    void update();
 
 private:
     /// Number of LEDs in the ATOM Matrix (5x5 grid)
     static const uint8_t LED_COUNT = 25;
     
-    /// Timer interval in microseconds (20ms = 50Hz for smooth animation)
-    static const uint32_t TIMER_INTERVAL_US = 20000;
+    /// Animation update interval in milliseconds (20ms = 50Hz)
+    static const uint32_t UPDATE_INTERVAL_MS = 20;
     
     /// Current pulse phase for animation (0-255)
-    static uint8_t pulsePhase;
+    uint8_t pulsePhase = 0;
     
     /// Pulse animation speed
     static const uint8_t PULSE_SPEED = 2;
     
     /// Flag to indicate if pulsing animation is active
-    static bool isPulsing;
+    bool isPulsing = false;
     
-    /// Hardware timer handle
-    static hw_timer_t* animationTimer;
-    
-    /// Static instance pointer for timer callback access
-    static MatrixService* instance;
+    /// Last update time for smooth animation timing
+    unsigned long lastUpdateTime = 0;
     
     /**
      * Updates the pulsing blue animation.
      * 
-     * Called by the timer interrupt to update LED brightness.
+     * Called by update() when pulsing animation is active.
      */
     void updatePulsingAnimation();
 };
