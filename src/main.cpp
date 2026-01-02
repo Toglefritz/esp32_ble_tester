@@ -39,6 +39,7 @@ const char* READ_WRITE_CHAR_UUID = "10000001-1234-1234-1234-123456789abc";
 const char* READ_ONLY_CHAR_UUID = "10000002-1234-1234-1234-123456789abc";
 const char* WRITE_ONLY_CHAR_UUID = "10000003-1234-1234-1234-123456789abc";
 const char* NOTIFY_CHAR_UUID = "10000004-1234-1234-1234-123456789abc";
+const char* LARGE_DATA_CHAR_UUID = "10000005-1234-1234-1234-123456789abc";
 
 /// BLE server instance
 BLEServer* bleServer = nullptr;
@@ -51,6 +52,7 @@ BLECharacteristic* readWriteCharacteristic = nullptr;
 BLECharacteristic* readOnlyCharacteristic = nullptr;
 BLECharacteristic* writeOnlyCharacteristic = nullptr;
 BLECharacteristic* notifyCharacteristic = nullptr;
+BLECharacteristic* largeDataCharacteristic = nullptr;
 
 /// Connection status tracking
 bool deviceConnected = false;
@@ -101,6 +103,32 @@ class WriteOnlyCallbacks: public BLECharacteristicCallbacks {
             Serial.println("Command processed: Device is running");
         } else {
             Serial.println("Command processed: Unknown command");
+        }
+    }
+};
+
+/**
+ * Large Data Characteristic Callbacks
+ * 
+ * Handles write operations to the large data characteristic.
+ * Logs data size for MTU and chunking tests.
+ */
+class LargeDataCallbacks: public BLECharacteristicCallbacks {
+    void onWrite(BLECharacteristic* characteristic) {
+        std::string value = characteristic->getValue();
+        Serial.print("Large data received: ");
+        Serial.print(value.length());
+        Serial.println(" bytes");
+        
+        // Log first and last few characters for verification
+        if (value.length() > 20) {
+            Serial.print("Start: ");
+            Serial.println(value.substr(0, 10).c_str());
+            Serial.print("End: ");
+            Serial.println(value.substr(value.length() - 10).c_str());
+        } else {
+            Serial.print("Data: ");
+            Serial.println(value.c_str());
         }
     }
 };
@@ -191,6 +219,20 @@ void initializeBLE() {
     );
     notifyCharacteristic->addDescriptor(new BLE2902());
     
+    // 5. Large data characteristic (MTU testing)
+    largeDataCharacteristic = testService->createCharacteristic(
+        LARGE_DATA_CHAR_UUID,
+        BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE
+    );
+    // Create 500-byte test string for MTU testing
+    std::string largeData = "LARGE_DATA_TEST:";
+    for (int i = 0; i < 30; i++) {
+        largeData += "0123456789ABCDEF"; // 16 chars per iteration
+    }
+    largeData += ":END"; // Total ~500 bytes
+    largeDataCharacteristic->setValue(largeData);
+    largeDataCharacteristic->setCallbacks(new LargeDataCallbacks());
+    
     // Start the service
     testService->start();
     
@@ -215,6 +257,8 @@ void initializeBLE() {
     Serial.println(WRITE_ONLY_CHAR_UUID);
     Serial.print("  Notify: ");
     Serial.println(NOTIFY_CHAR_UUID);
+    Serial.print("  Large data: ");
+    Serial.println(LARGE_DATA_CHAR_UUID);
 }
 
 /**
