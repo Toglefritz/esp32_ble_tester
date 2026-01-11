@@ -238,9 +238,16 @@ void initializeBLE() {
     
     // Start advertising
     BLEAdvertising* advertising = BLEDevice::getAdvertising();
+    
+    // Add the service UUID to the advertisement
     advertising->addServiceUUID(TEST_SERVICE_UUID);
-    advertising->setScanResponse(false);
-    advertising->setMinPreferred(0x0);
+    
+    // Set advertising parameters
+    advertising->setScanResponse(true);
+    advertising->setMinPreferred(0x06);
+    advertising->setMaxPreferred(0x12);
+    
+    // Start advertising
     BLEDevice::startAdvertising();
     
     Serial.println("BLE advertising started");
