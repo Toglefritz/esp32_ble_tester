@@ -48,6 +48,9 @@ const char* READ_ONLY_CHAR_UUID = "10000002-1234-1234-1234-123456789abc";
 const char* WRITE_ONLY_CHAR_UUID = "10000003-1234-1234-1234-123456789abc";
 const char* NOTIFY_CHAR_UUID = "10000004-1234-1234-1234-123456789abc";
 const char* LARGE_DATA_CHAR_UUID = "10000005-1234-1234-1234-123456789abc";
+const char* ENCRYPTED_READ_CHAR_UUID = "10000006-1234-1234-1234-123456789abc";
+const char* ENCRYPTED_WRITE_CHAR_UUID = "10000007-1234-1234-1234-123456789abc";
+const char* MITM_CHAR_UUID = "10000008-1234-1234-1234-123456789abc";
 
 /// BLE server instance
 BLEServer* bleServer = nullptr;
@@ -61,6 +64,9 @@ BLECharacteristic* readOnlyCharacteristic = nullptr;
 BLECharacteristic* writeOnlyCharacteristic = nullptr;
 BLECharacteristic* notifyCharacteristic = nullptr;
 BLECharacteristic* largeDataCharacteristic = nullptr;
+BLECharacteristic* encryptedReadCharacteristic = nullptr;
+BLECharacteristic* encryptedWriteCharacteristic = nullptr;
+BLECharacteristic* mitmCharacteristic = nullptr;
 
 /// Connection status tracking
 bool deviceConnected = false;
@@ -297,6 +303,42 @@ void initializeBLE() {
     largeDataCharacteristic->setValue(largeData);
     largeDataCharacteristic->setCallbacks(new LargeDataCallbacks());
     
+    // 6. Encrypted read characteristic (requires pairing)
+    encryptedReadCharacteristic = testService->createCharacteristic(
+        ENCRYPTED_READ_CHAR_UUID,
+        BLECharacteristic::PROPERTY_READ
+    );
+    encryptedReadCharacteristic->setAccessPermissions(ESP_GATT_PERM_READ_ENCRYPTED);
+    encryptedReadCharacteristic->setValue("Encrypted data - pairing required");
+    
+    // 7. Encrypted write characteristic (requires pairing)
+    encryptedWriteCharacteristic = testService->createCharacteristic(
+        ENCRYPTED_WRITE_CHAR_UUID,
+        BLECharacteristic::PROPERTY_WRITE
+    );
+    encryptedWriteCharacteristic->setAccessPermissions(ESP_GATT_PERM_WRITE_ENCRYPTED);
+    
+    // 8. MITM-protected characteristic (simplified - just encrypted read for now)
+    // NOTE: This characteristic may not be visible during service discovery
+    // until pairing is established. This is expected BLE security behavior.
+    mitmCharacteristic = testService->createCharacteristic(
+        MITM_CHAR_UUID,
+        BLECharacteristic::PROPERTY_READ
+    );
+    mitmCharacteristic->setAccessPermissions(ESP_GATT_PERM_READ_ENCRYPTED);
+    mitmCharacteristic->setValue("MITM protected data");
+    
+    // Debug: Log characteristic creation
+    Serial.println("Characteristics created:");
+    Serial.print("  1. Read/Write: "); Serial.println(readWriteCharacteristic ? "OK" : "FAILED");
+    Serial.print("  2. Read-only: "); Serial.println(readOnlyCharacteristic ? "OK" : "FAILED");
+    Serial.print("  3. Write-only: "); Serial.println(writeOnlyCharacteristic ? "OK" : "FAILED");
+    Serial.print("  4. Notify: "); Serial.println(notifyCharacteristic ? "OK" : "FAILED");
+    Serial.print("  5. Large data: "); Serial.println(largeDataCharacteristic ? "OK" : "FAILED");
+    Serial.print("  6. Encrypted read: "); Serial.println(encryptedReadCharacteristic ? "OK" : "FAILED");
+    Serial.print("  7. Encrypted write: "); Serial.println(encryptedWriteCharacteristic ? "OK" : "FAILED");
+    Serial.print("  8. MITM protected: "); Serial.println(mitmCharacteristic ? "OK" : "FAILED");
+    
     // Start the service
     testService->start();
     
@@ -382,6 +424,12 @@ void initializeBLE() {
     Serial.println(NOTIFY_CHAR_UUID);
     Serial.print("  Large data: ");
     Serial.println(LARGE_DATA_CHAR_UUID);
+    Serial.print("  Encrypted read: ");
+    Serial.println(ENCRYPTED_READ_CHAR_UUID);
+    Serial.print("  Encrypted write: ");
+    Serial.println(ENCRYPTED_WRITE_CHAR_UUID);
+    Serial.print("  MITM protected: ");
+    Serial.println(MITM_CHAR_UUID);
 }
 
 /**
