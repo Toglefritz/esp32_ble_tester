@@ -6,9 +6,14 @@
  * 
  * Features:
  * - BLE advertising with configurable device name
+ * - Manufacturer data in both advertisement and scan response
  * - Connection state management with LED status indicators
  * - Serial logging for debugging and monitoring
  * - Visual feedback via 5x5 RGB LED matrix
+ * 
+ * Manufacturer Data:
+ * - Advertisement: Company ID 0xFFFF + consecutive bytes 0x00-0x0F
+ * - Scan Response: Company ID 0xFFFF + consecutive bytes 0x10-0x1F
  * 
  * LED Status Indicators:
  * - Blue: Advertising (ready for connections)
@@ -30,6 +35,9 @@ const uint32_t SERIAL_BAUD_RATE = 115200;
 
 /// BLE device name for advertising
 const char* BLE_DEVICE_NAME = "SplendidBLE-Tester";
+
+/// Manufacturer ID for manufacturer data (using test company ID)
+const uint16_t MANUFACTURER_ID = 0xFFFF; // Reserved for testing
 
 /// Test service UUID
 const char* TEST_SERVICE_UUID = "10000000-1234-1234-1234-123456789abc";
@@ -64,6 +72,62 @@ uint32_t notifyCounter = 0;
 
 /// Matrix service instance
 MatrixService matrixService;
+
+/**
+ * Creates manufacturer data with consecutive numbers for easy verification.
+ * 
+ * Creates a manufacturer data payload containing:
+ * - Manufacturer ID (2 bytes): 0xFFFF (test company ID)
+ * - Data payload: consecutive numbers 0x00 through 0x0F (16 bytes)
+ * 
+ * @param data Buffer to store the manufacturer data
+ * @param maxSize Maximum size of the buffer
+ * @returns Actual size of the manufacturer data created
+ */
+size_t createManufacturerData(uint8_t* data, size_t maxSize) {
+    if (maxSize < 18) { // Need at least 2 bytes for ID + 16 bytes for data
+        return 0;
+    }
+    
+    // Add manufacturer ID (little-endian)
+    data[0] = MANUFACTURER_ID & 0xFF;
+    data[1] = (MANUFACTURER_ID >> 8) & 0xFF;
+    
+    // Add consecutive numbers 0x00 through 0x0F
+    for (int i = 0; i < 16; i++) {
+        data[2 + i] = i;
+    }
+    
+    return 18; // 2 bytes ID + 16 bytes data
+}
+
+/**
+ * Creates scan response manufacturer data with different consecutive numbers.
+ * 
+ * Creates a scan response manufacturer data payload containing:
+ * - Manufacturer ID (2 bytes): 0xFFFF (test company ID)
+ * - Data payload: consecutive numbers 0x10 through 0x1F (16 bytes)
+ * 
+ * @param data Buffer to store the manufacturer data
+ * @param maxSize Maximum size of the buffer
+ * @returns Actual size of the manufacturer data created
+ */
+size_t createScanResponseManufacturerData(uint8_t* data, size_t maxSize) {
+    if (maxSize < 18) { // Need at least 2 bytes for ID + 16 bytes for data
+        return 0;
+    }
+    
+    // Add manufacturer ID (little-endian)
+    data[0] = MANUFACTURER_ID & 0xFF;
+    data[1] = (MANUFACTURER_ID >> 8) & 0xFF;
+    
+    // Add consecutive numbers 0x10 through 0x1F for scan response
+    for (int i = 0; i < 16; i++) {
+        data[2 + i] = 0x10 + i;
+    }
+    
+    return 18; // 2 bytes ID + 16 bytes data
+}
 
 /**
  * BLE Server Callbacks
@@ -239,13 +303,60 @@ void initializeBLE() {
     // Start advertising
     BLEAdvertising* advertising = BLEDevice::getAdvertising();
     
-    // Add the service UUID to the advertisement
-    advertising->addServiceUUID(TEST_SERVICE_UUID);
+    // Create advertisement data with both service UUID and manufacturer data
+    BLEAdvertisementData advertisementData;
+    advertisementData.setFlags(0x06); // BR_EDR_NOT_SUPPORTED | LE_GENERAL_DISC_MODE
+    
+    // Add service UUID to advertisement data
+    advertisementData.setCompleteServices(BLEUUID(TEST_SERVICE_UUID));
+    
+    // Create and add manufacturer data to advertisement
+    uint8_t manufacturerData[32];
+    size_t manufacturerDataSize = createManufacturerData(manufacturerData, sizeof(manufacturerData));
+    if (manufacturerDataSize > 0) {
+        std::string manufacturerDataStr((char*)manufacturerData, manufacturerDataSize);
+        advertisementData.setManufacturerData(manufacturerDataStr);
+        Serial.print("Advertisement manufacturer data added: ");
+        Serial.print(manufacturerDataSize);
+        Serial.println(" bytes");
+        
+        // Log the data for verification
+        Serial.print("  Data: ");
+        for (size_t i = 0; i < manufacturerDataSize; i++) {
+            Serial.printf("0x%02X ", manufacturerData[i]);
+        }
+        Serial.println();
+    }
+    
+    // Set the complete advertisement data (includes both service UUID and manufacturer data)
+    advertising->setAdvertisementData(advertisementData);
     
     // Set advertising parameters
     advertising->setScanResponse(true);
     advertising->setMinPreferred(0x06);
     advertising->setMaxPreferred(0x12);
+    
+    // Create and add manufacturer data to scan response
+    uint8_t scanResponseData[32];
+    size_t scanResponseDataSize = createScanResponseManufacturerData(scanResponseData, sizeof(scanResponseData));
+    if (scanResponseDataSize > 0) {
+        BLEAdvertisementData scanResponseAdv;
+        std::string scanResponseDataStr((char*)scanResponseData, scanResponseDataSize);
+        scanResponseAdv.setManufacturerData(scanResponseDataStr);
+        
+        // Set the scan response data
+        advertising->setScanResponseData(scanResponseAdv);
+        Serial.print("Scan response manufacturer data added: ");
+        Serial.print(scanResponseDataSize);
+        Serial.println(" bytes");
+        
+        // Log the data for verification
+        Serial.print("  Data: ");
+        for (size_t i = 0; i < scanResponseDataSize; i++) {
+            Serial.printf("0x%02X ", scanResponseData[i]);
+        }
+        Serial.println();
+    }
     
     // Start advertising
     BLEDevice::startAdvertising();
@@ -255,6 +366,11 @@ void initializeBLE() {
     Serial.println(BLE_DEVICE_NAME);
     Serial.print("Test service UUID: ");
     Serial.println(TEST_SERVICE_UUID);
+    Serial.print("Manufacturer ID: 0x");
+    Serial.println(MANUFACTURER_ID, HEX);
+    Serial.println("Manufacturer data:");
+    Serial.println("  Advertisement: 0x00-0x0F (consecutive numbers)");
+    Serial.println("  Scan response: 0x10-0x1F (consecutive numbers)");
     Serial.println("Characteristics:");
     Serial.print("  Read/Write: ");
     Serial.println(READ_WRITE_CHAR_UUID);
