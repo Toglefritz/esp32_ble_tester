@@ -47,10 +47,11 @@ const char* READ_WRITE_CHAR_UUID = "10000001-1234-1234-1234-123456789abc";
 const char* READ_ONLY_CHAR_UUID = "10000002-1234-1234-1234-123456789abc";
 const char* WRITE_ONLY_CHAR_UUID = "10000003-1234-1234-1234-123456789abc";
 const char* NOTIFY_CHAR_UUID = "10000004-1234-1234-1234-123456789abc";
-const char* LARGE_DATA_CHAR_UUID = "10000005-1234-1234-1234-123456789abc";
-const char* ENCRYPTED_READ_CHAR_UUID = "10000006-1234-1234-1234-123456789abc";
-const char* ENCRYPTED_WRITE_CHAR_UUID = "10000007-1234-1234-1234-123456789abc";
-const char* MITM_CHAR_UUID = "10000008-1234-1234-1234-123456789abc";
+const char* INDICATE_CHAR_UUID = "10000005-1234-1234-1234-123456789abc";
+const char* LARGE_DATA_CHAR_UUID = "10000006-1234-1234-1234-123456789abc";
+const char* ENCRYPTED_READ_CHAR_UUID = "10000007-1234-1234-1234-123456789abc";
+const char* ENCRYPTED_WRITE_CHAR_UUID = "10000008-1234-1234-1234-123456789abc";
+const char* MITM_CHAR_UUID = "10000009-1234-1234-1234-123456789abc";
 
 /// BLE server instance
 BLEServer* bleServer = nullptr;
@@ -63,6 +64,7 @@ BLECharacteristic* readWriteCharacteristic = nullptr;
 BLECharacteristic* readOnlyCharacteristic = nullptr;
 BLECharacteristic* writeOnlyCharacteristic = nullptr;
 BLECharacteristic* notifyCharacteristic = nullptr;
+BLECharacteristic* indicateCharacteristic = nullptr;
 BLECharacteristic* largeDataCharacteristic = nullptr;
 BLECharacteristic* encryptedReadCharacteristic = nullptr;
 BLECharacteristic* encryptedWriteCharacteristic = nullptr;
@@ -75,6 +77,11 @@ bool deviceConnected = false;
 unsigned long lastNotifyTime = 0;
 const unsigned long NOTIFY_INTERVAL_MS = 3000; // Send notification every 3 seconds
 uint32_t notifyCounter = 0;
+
+/// Indication timing
+unsigned long lastIndicateTime = 0;
+const unsigned long INDICATE_INTERVAL_MS = 5000; // Send indication every 5 seconds
+uint32_t indicateCounter = 0;
 
 /// Matrix service instance
 MatrixService matrixService;
@@ -243,6 +250,26 @@ void handleNotifications() {
 }
 
 /**
+ * Sends periodic indications to subscribed clients.
+ * 
+ * Sends a counter value every 5 seconds to test indication functionality.
+ * Indications require acknowledgment from the client, unlike notifications.
+ */
+void handleIndications() {
+    if (deviceConnected && (millis() - lastIndicateTime >= INDICATE_INTERVAL_MS)) {
+        String indicateValue = "Indication: " + String(indicateCounter);
+        indicateCharacteristic->setValue(indicateValue.c_str());
+        indicateCharacteristic->indicate();
+        
+        Serial.print("Indication sent: ");
+        Serial.println(indicateValue);
+        
+        indicateCounter++;
+        lastIndicateTime = millis();
+    }
+}
+
+/**
  * Initializes BLE functionality.
  * 
  * Sets up BLE device, server, creates test service with one characteristic,
@@ -289,7 +316,14 @@ void initializeBLE() {
     );
     notifyCharacteristic->addDescriptor(new BLE2902());
     
-    // 5. Large data characteristic (MTU testing)
+    // 5. Indicate characteristic (periodic updates with acknowledgment)
+    indicateCharacteristic = testService->createCharacteristic(
+        INDICATE_CHAR_UUID,
+        BLECharacteristic::PROPERTY_INDICATE
+    );
+    indicateCharacteristic->addDescriptor(new BLE2902());
+    
+    // 6. Large data characteristic (MTU testing)
     largeDataCharacteristic = testService->createCharacteristic(
         LARGE_DATA_CHAR_UUID,
         BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE
@@ -303,7 +337,7 @@ void initializeBLE() {
     largeDataCharacteristic->setValue(largeData);
     largeDataCharacteristic->setCallbacks(new LargeDataCallbacks());
     
-    // 6. Encrypted read characteristic (requires pairing)
+    // 7. Encrypted read characteristic (requires pairing)
     encryptedReadCharacteristic = testService->createCharacteristic(
         ENCRYPTED_READ_CHAR_UUID,
         BLECharacteristic::PROPERTY_READ
@@ -311,14 +345,14 @@ void initializeBLE() {
     encryptedReadCharacteristic->setAccessPermissions(ESP_GATT_PERM_READ_ENCRYPTED);
     encryptedReadCharacteristic->setValue("Encrypted data - pairing required");
     
-    // 7. Encrypted write characteristic (requires pairing)
+    // 8. Encrypted write characteristic (requires pairing)
     encryptedWriteCharacteristic = testService->createCharacteristic(
         ENCRYPTED_WRITE_CHAR_UUID,
         BLECharacteristic::PROPERTY_WRITE
     );
     encryptedWriteCharacteristic->setAccessPermissions(ESP_GATT_PERM_WRITE_ENCRYPTED);
     
-    // 8. MITM-protected characteristic (simplified - just encrypted read for now)
+    // 9. MITM-protected characteristic (simplified - just encrypted read for now)
     // NOTE: This characteristic may not be visible during service discovery
     // until pairing is established. This is expected BLE security behavior.
     mitmCharacteristic = testService->createCharacteristic(
@@ -334,10 +368,11 @@ void initializeBLE() {
     Serial.print("  2. Read-only: "); Serial.println(readOnlyCharacteristic ? "OK" : "FAILED");
     Serial.print("  3. Write-only: "); Serial.println(writeOnlyCharacteristic ? "OK" : "FAILED");
     Serial.print("  4. Notify: "); Serial.println(notifyCharacteristic ? "OK" : "FAILED");
-    Serial.print("  5. Large data: "); Serial.println(largeDataCharacteristic ? "OK" : "FAILED");
-    Serial.print("  6. Encrypted read: "); Serial.println(encryptedReadCharacteristic ? "OK" : "FAILED");
-    Serial.print("  7. Encrypted write: "); Serial.println(encryptedWriteCharacteristic ? "OK" : "FAILED");
-    Serial.print("  8. MITM protected: "); Serial.println(mitmCharacteristic ? "OK" : "FAILED");
+    Serial.print("  5. Indicate: "); Serial.println(indicateCharacteristic ? "OK" : "FAILED");
+    Serial.print("  6. Large data: "); Serial.println(largeDataCharacteristic ? "OK" : "FAILED");
+    Serial.print("  7. Encrypted read: "); Serial.println(encryptedReadCharacteristic ? "OK" : "FAILED");
+    Serial.print("  8. Encrypted write: "); Serial.println(encryptedWriteCharacteristic ? "OK" : "FAILED");
+    Serial.print("  9. MITM protected: "); Serial.println(mitmCharacteristic ? "OK" : "FAILED");
     
     // Start the service
     testService->start();
@@ -422,6 +457,8 @@ void initializeBLE() {
     Serial.println(WRITE_ONLY_CHAR_UUID);
     Serial.print("  Notify: ");
     Serial.println(NOTIFY_CHAR_UUID);
+    Serial.print("  Indicate: ");
+    Serial.println(INDICATE_CHAR_UUID);
     Serial.print("  Large data: ");
     Serial.println(LARGE_DATA_CHAR_UUID);
     Serial.print("  Encrypted read: ");
@@ -483,6 +520,9 @@ void loop() {
   
   // Handle notifications
   handleNotifications();
+  
+  // Handle indications
+  handleIndications();
   
   // Small delay to prevent excessive CPU usage
   delay(10);
