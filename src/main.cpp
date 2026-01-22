@@ -73,6 +73,12 @@ BLECharacteristic* mitmCharacteristic = nullptr;
 /// Connection status tracking
 bool deviceConnected = false;
 
+/// Notification subscription status
+bool notifySubscribed = false;
+
+/// Indication subscription status
+bool indicateSubscribed = false;
+
 /// Notification timing
 unsigned long lastNotifyTime = 0;
 const unsigned long NOTIFY_INTERVAL_MS = 3000; // Send notification every 3 seconds
@@ -156,8 +162,50 @@ class ServerCallbacks: public BLEServerCallbacks {
 
     void onDisconnect(BLEServer* server) {
         deviceConnected = false;
+        notifySubscribed = false;
+        indicateSubscribed = false;
         Serial.println("BLE Client disconnected - restarting advertising");
         BLEDevice::startAdvertising();
+    }
+};
+
+/**
+ * Notification Descriptor Callbacks
+ * 
+ * Handles subscription changes for the notification characteristic.
+ * Tracks whether a client is subscribed to notifications.
+ */
+class NotifyDescriptorCallbacks: public BLEDescriptorCallbacks {
+    void onWrite(BLEDescriptor* descriptor) {
+        uint8_t* value = descriptor->getValue();
+        uint16_t len = descriptor->getLength();
+        
+        if (len > 0) {
+            // Check if notifications are enabled (0x0001) or disabled (0x0000)
+            notifySubscribed = (value[0] == 0x01);
+            Serial.print("Notification subscription changed: ");
+            Serial.println(notifySubscribed ? "SUBSCRIBED" : "UNSUBSCRIBED");
+        }
+    }
+};
+
+/**
+ * Indication Descriptor Callbacks
+ * 
+ * Handles subscription changes for the indication characteristic.
+ * Tracks whether a client is subscribed to indications.
+ */
+class IndicateDescriptorCallbacks: public BLEDescriptorCallbacks {
+    void onWrite(BLEDescriptor* descriptor) {
+        uint8_t* value = descriptor->getValue();
+        uint16_t len = descriptor->getLength();
+        
+        if (len > 0) {
+            // Check if indications are enabled (0x0002) or disabled (0x0000)
+            indicateSubscribed = (value[0] == 0x02);
+            Serial.print("Indication subscription changed: ");
+            Serial.println(indicateSubscribed ? "SUBSCRIBED" : "UNSUBSCRIBED");
+        }
     }
 };
 
@@ -234,9 +282,10 @@ void updateLEDStatus() {
  * Sends periodic notifications to subscribed clients.
  * 
  * Sends a counter value every 3 seconds to test notification functionality.
+ * Only sends when a client is actually subscribed.
  */
 void handleNotifications() {
-    if (deviceConnected && (millis() - lastNotifyTime >= NOTIFY_INTERVAL_MS)) {
+    if (deviceConnected && notifySubscribed && (millis() - lastNotifyTime >= NOTIFY_INTERVAL_MS)) {
         String notifyValue = "Counter: " + String(notifyCounter);
         notifyCharacteristic->setValue(notifyValue.c_str());
         notifyCharacteristic->notify();
@@ -254,9 +303,10 @@ void handleNotifications() {
  * 
  * Sends a counter value every 5 seconds to test indication functionality.
  * Indications require acknowledgment from the client, unlike notifications.
+ * Only sends when a client is actually subscribed.
  */
 void handleIndications() {
-    if (deviceConnected && (millis() - lastIndicateTime >= INDICATE_INTERVAL_MS)) {
+    if (deviceConnected && indicateSubscribed && (millis() - lastIndicateTime >= INDICATE_INTERVAL_MS)) {
         String indicateValue = "Indication: " + String(indicateCounter);
         indicateCharacteristic->setValue(indicateValue.c_str());
         indicateCharacteristic->indicate();
@@ -314,14 +364,18 @@ void initializeBLE() {
         NOTIFY_CHAR_UUID,
         BLECharacteristic::PROPERTY_NOTIFY
     );
-    notifyCharacteristic->addDescriptor(new BLE2902());
+    BLE2902* notifyDescriptor = new BLE2902();
+    notifyDescriptor->setCallbacks(new NotifyDescriptorCallbacks());
+    notifyCharacteristic->addDescriptor(notifyDescriptor);
     
     // 5. Indicate characteristic (periodic updates with acknowledgment)
     indicateCharacteristic = testService->createCharacteristic(
         INDICATE_CHAR_UUID,
         BLECharacteristic::PROPERTY_INDICATE
     );
-    indicateCharacteristic->addDescriptor(new BLE2902());
+    BLE2902* indicateDescriptor = new BLE2902();
+    indicateDescriptor->setCallbacks(new IndicateDescriptorCallbacks());
+    indicateCharacteristic->addDescriptor(indicateDescriptor);
     
     // 6. Large data characteristic (MTU testing)
     largeDataCharacteristic = testService->createCharacteristic(
