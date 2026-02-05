@@ -52,6 +52,7 @@ const char* LARGE_DATA_CHAR_UUID = "10000006-1234-1234-1234-123456789abc";
 const char* ENCRYPTED_READ_CHAR_UUID = "10000007-1234-1234-1234-123456789abc";
 const char* ENCRYPTED_WRITE_CHAR_UUID = "10000008-1234-1234-1234-123456789abc";
 const char* MITM_CHAR_UUID = "10000009-1234-1234-1234-123456789abc";
+const char* DYNAMIC_PAIRING_CHAR_UUID = "1000000A-1234-1234-1234-123456789abc";
 
 /// BLE server instance
 BLEServer* bleServer = nullptr;
@@ -69,6 +70,10 @@ BLECharacteristic* largeDataCharacteristic = nullptr;
 BLECharacteristic* encryptedReadCharacteristic = nullptr;
 BLECharacteristic* encryptedWriteCharacteristic = nullptr;
 BLECharacteristic* mitmCharacteristic = nullptr;
+
+#ifdef ENABLE_DYNAMIC_PAIRING_TEST
+BLECharacteristic* dynamicPairingCharacteristic = nullptr;
+#endif
 
 /// Connection status tracking
 bool deviceConnected = false;
@@ -91,6 +96,30 @@ uint32_t indicateCounter = 0;
 
 /// Matrix service instance
 MatrixService matrixService;
+
+#ifdef ENABLE_DYNAMIC_PAIRING_TEST
+/**
+ * Pairing method enumeration for dynamic pairing testing.
+ * 
+ * Defines the three main BLE pairing methods that will be cycled through
+ * on each client disconnect. The pairing method is determined by the
+ * IO capabilities set on the device.
+ */
+enum class PairingMethod {
+    JUST_WORKS,          /// < No user interaction, automatic pairing
+    NUMERIC_COMPARISON,  /// < Both devices display a 6-digit number for comparison
+    PASSKEY_ENTRY        /// < One device displays passkey, other enters it
+};
+
+/// Current pairing method for the dynamic pairing characteristic
+PairingMethod currentPairingMethod = PairingMethod::JUST_WORKS;
+
+/// Fixed passkey for Passkey Entry pairing method (6 digits)
+const uint32_t FIXED_PASSKEY = 123456;
+
+// Forward declaration
+void updateSecuritySettings();
+#endif
 
 /**
  * Creates manufacturer data with consecutive numbers for easy verification.
@@ -158,6 +187,21 @@ class ServerCallbacks: public BLEServerCallbacks {
     void onConnect(BLEServer* server) {
         deviceConnected = true;
         Serial.println("BLE Client connected");
+        
+        #ifdef ENABLE_DYNAMIC_PAIRING_TEST
+        Serial.print("Current pairing method: ");
+        switch (currentPairingMethod) {
+            case PairingMethod::JUST_WORKS:
+                Serial.println("Just Works (NoInputNoOutput)");
+                break;
+            case PairingMethod::NUMERIC_COMPARISON:
+                Serial.println("Numeric Comparison (DisplayYesNo)");
+                break;
+            case PairingMethod::PASSKEY_ENTRY:
+                Serial.println("Passkey Entry (DisplayOnly)");
+                break;
+        }
+        #endif
     }
 
     void onDisconnect(BLEServer* server) {
@@ -165,6 +209,28 @@ class ServerCallbacks: public BLEServerCallbacks {
         notifySubscribed = false;
         indicateSubscribed = false;
         Serial.println("BLE Client disconnected - restarting advertising");
+        
+        #ifdef ENABLE_DYNAMIC_PAIRING_TEST
+        // Rotate to next pairing method
+        switch (currentPairingMethod) {
+            case PairingMethod::JUST_WORKS:
+                currentPairingMethod = PairingMethod::NUMERIC_COMPARISON;
+                Serial.println("Next pairing method: Numeric Comparison");
+                break;
+            case PairingMethod::NUMERIC_COMPARISON:
+                currentPairingMethod = PairingMethod::PASSKEY_ENTRY;
+                Serial.println("Next pairing method: Passkey Entry");
+                break;
+            case PairingMethod::PASSKEY_ENTRY:
+                currentPairingMethod = PairingMethod::JUST_WORKS;
+                Serial.println("Next pairing method: Just Works");
+                break;
+        }
+        
+        // Update security settings for the new pairing method
+        updateSecuritySettings();
+        #endif
+        
         BLEDevice::startAdvertising();
     }
 };
@@ -257,6 +323,166 @@ class LargeDataCallbacks: public BLECharacteristicCallbacks {
         }
     }
 };
+
+#ifdef ENABLE_DYNAMIC_PAIRING_TEST
+/**
+ * BLE Security Callbacks
+ * 
+ * Handles pairing and authentication events for dynamic pairing testing.
+ * Implements callbacks for different pairing methods based on current state.
+ */
+class DynamicSecurityCallbacks : public BLESecurityCallbacks {
+    /**
+     * Called when a security request is received from the client.
+     * 
+     * @returns true to accept the security request, false to reject
+     */
+    bool onSecurityRequest() {
+        Serial.println("=== SECURITY REQUEST ===");
+        Serial.println("Client requested security - accepting");
+        Serial.println("========================");
+        return true;
+    }
+
+    /**
+     * Called when a passkey needs to be displayed to the user.
+     * Used in Passkey Entry pairing method.
+     * 
+     * @param passkey The 6-digit passkey to display
+     */
+    void onPassKeyNotify(uint32_t passkey) {
+        Serial.println("=== PASSKEY DISPLAY ===");
+        Serial.print("Passkey to display: ");
+        Serial.println(passkey);
+        Serial.println("User should enter this passkey on the client device");
+        Serial.println("=======================");
+    }
+
+    /**
+     * Called when the user needs to enter a passkey.
+     * Used in Passkey Entry pairing method when device is the input side.
+     * 
+     * @returns The passkey entered by the user (fixed for testing)
+     */
+    uint32_t onPassKeyRequest() {
+        Serial.println("=== PASSKEY REQUEST ===");
+        Serial.print("Returning fixed passkey: ");
+        Serial.println(FIXED_PASSKEY);
+        Serial.println("=======================");
+        return FIXED_PASSKEY;
+    }
+
+    /**
+     * Called when numeric comparison is required.
+     * Both devices display the same 6-digit number and user confirms match.
+     * 
+     * @param passkey The 6-digit number to compare
+     * @returns true to accept the pairing, false to reject
+     */
+    bool onConfirmPIN(uint32_t passkey) {
+        Serial.println("=== NUMERIC COMPARISON ===");
+        Serial.print("Confirm this number matches on both devices: ");
+        Serial.println(passkey);
+        Serial.println("Auto-accepting for testing purposes");
+        Serial.println("==========================");
+        // Auto-accept for testing - in production, this would require user confirmation
+        return true;
+    }
+
+    /**
+     * Called when authentication completes successfully.
+     * 
+     * @param bd_addr The Bluetooth device address of the paired device
+     */
+    void onAuthenticationComplete(esp_ble_auth_cmpl_t auth_cmpl) {
+        if (auth_cmpl.success) {
+            Serial.println("=== PAIRING SUCCESS ===");
+            Serial.print("Device address: ");
+            for (int i = 0; i < 6; i++) {
+                Serial.printf("%02X", auth_cmpl.bd_addr[i]);
+                if (i < 5) Serial.print(":");
+            }
+            Serial.println();
+            Serial.print("Pairing method used: ");
+            switch (currentPairingMethod) {
+                case PairingMethod::JUST_WORKS:
+                    Serial.println("Just Works");
+                    break;
+                case PairingMethod::NUMERIC_COMPARISON:
+                    Serial.println("Numeric Comparison");
+                    break;
+                case PairingMethod::PASSKEY_ENTRY:
+                    Serial.println("Passkey Entry");
+                    break;
+            }
+            Serial.println("=======================");
+        } else {
+            Serial.println("=== PAIRING FAILED ===");
+            Serial.print("Failure reason: ");
+            Serial.println(auth_cmpl.fail_reason);
+            Serial.println("======================");
+        }
+    }
+};
+
+/**
+ * Updates BLE security settings based on the current pairing method.
+ * 
+ * Configures IO capabilities and security requirements to force the
+ * desired pairing method. This function should be called after changing
+ * the currentPairingMethod variable.
+ */
+void updateSecuritySettings() {
+    Serial.println("Updating security settings...");
+    
+    // Set security callbacks
+    BLEDevice::setSecurityCallbacks(new DynamicSecurityCallbacks());
+    
+    // Configure security based on current pairing method
+    BLESecurity* security = new BLESecurity();
+    
+    switch (currentPairingMethod) {
+        case PairingMethod::JUST_WORKS:
+            // Just Works: No input, no output, no MITM protection
+            BLEDevice::setEncryptionLevel(ESP_BLE_SEC_ENCRYPT);
+            security->setCapability(ESP_IO_CAP_NONE);
+            security->setAuthenticationMode(ESP_LE_AUTH_NO_BOND);
+            Serial.println("  IO Capability: NoInputNoOutput");
+            Serial.println("  Auth Mode: No Bond");
+            Serial.println("  Expected pairing: Just Works");
+            break;
+            
+        case PairingMethod::NUMERIC_COMPARISON:
+            // Numeric Comparison: Display + Yes/No input, MITM protection
+            BLEDevice::setEncryptionLevel(ESP_BLE_SEC_ENCRYPT_MITM);
+            security->setCapability(ESP_IO_CAP_IO);
+            security->setAuthenticationMode(ESP_LE_AUTH_REQ_SC_MITM_BOND);
+            Serial.println("  IO Capability: DisplayYesNo");
+            Serial.println("  Auth Mode: Secure Connections + MITM + Bond");
+            Serial.println("  Expected pairing: Numeric Comparison");
+            break;
+            
+        case PairingMethod::PASSKEY_ENTRY:
+            // Passkey Entry: Display only, MITM protection
+            BLEDevice::setEncryptionLevel(ESP_BLE_SEC_ENCRYPT_MITM);
+            security->setCapability(ESP_IO_CAP_OUT);
+            security->setAuthenticationMode(ESP_LE_AUTH_REQ_SC_MITM_BOND);
+            security->setStaticPIN(FIXED_PASSKEY);
+            Serial.println("  IO Capability: DisplayOnly");
+            Serial.println("  Auth Mode: Secure Connections + MITM + Bond");
+            Serial.print("  Fixed Passkey: ");
+            Serial.println(FIXED_PASSKEY);
+            Serial.println("  Expected pairing: Passkey Entry");
+            break;
+    }
+    
+    // Enable key distribution for bonding
+    security->setInitEncryptionKey(ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK);
+    security->setRespEncryptionKey(ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK);
+    
+    Serial.println("Security settings updated");
+}
+#endif
 
 /**
  * Updates matrix status based on BLE connection state.
@@ -416,6 +642,21 @@ void initializeBLE() {
     mitmCharacteristic->setAccessPermissions(ESP_GATT_PERM_READ_ENCRYPTED);
     mitmCharacteristic->setValue("MITM protected data");
     
+#ifdef ENABLE_DYNAMIC_PAIRING_TEST
+    // 10. Dynamic pairing characteristic - cycles through pairing methods on each disconnect
+    // This characteristic is used to test how clients handle changing IO capabilities
+    // and bonding database behavior across reconnections.
+    dynamicPairingCharacteristic = testService->createCharacteristic(
+        DYNAMIC_PAIRING_CHAR_UUID,
+        BLECharacteristic::PROPERTY_READ
+    );
+    dynamicPairingCharacteristic->setAccessPermissions(ESP_GATT_PERM_READ_ENC_MITM);
+    dynamicPairingCharacteristic->setValue("Dynamic pairing test - method will change on disconnect");
+    
+    // Initialize security settings for the first pairing method
+    updateSecuritySettings();
+#endif
+    
     // Debug: Log characteristic creation
     Serial.println("Characteristics created:");
     Serial.print("  1. Read/Write: "); Serial.println(readWriteCharacteristic ? "OK" : "FAILED");
@@ -427,6 +668,9 @@ void initializeBLE() {
     Serial.print("  7. Encrypted read: "); Serial.println(encryptedReadCharacteristic ? "OK" : "FAILED");
     Serial.print("  8. Encrypted write: "); Serial.println(encryptedWriteCharacteristic ? "OK" : "FAILED");
     Serial.print("  9. MITM protected: "); Serial.println(mitmCharacteristic ? "OK" : "FAILED");
+#ifdef ENABLE_DYNAMIC_PAIRING_TEST
+    Serial.print("  10. Dynamic pairing: "); Serial.println(dynamicPairingCharacteristic ? "OK" : "FAILED");
+#endif
     
     // Start the service
     testService->start();
@@ -521,6 +765,11 @@ void initializeBLE() {
     Serial.println(ENCRYPTED_WRITE_CHAR_UUID);
     Serial.print("  MITM protected: ");
     Serial.println(MITM_CHAR_UUID);
+#ifdef ENABLE_DYNAMIC_PAIRING_TEST
+    Serial.print("  Dynamic pairing: ");
+    Serial.println(DYNAMIC_PAIRING_CHAR_UUID);
+    Serial.println("Dynamic pairing test ENABLED - pairing method will cycle on each disconnect");
+#endif
 }
 
 /**
